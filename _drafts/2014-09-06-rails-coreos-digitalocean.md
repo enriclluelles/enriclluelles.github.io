@@ -15,11 +15,9 @@ So, let's get to it, here's the process that I followed:
 
 ## Set up Vagrant and the Digital Ocean provider
 
-First of all install Vagrant if you haven't or update it if you have a
-version older than 1.6.0. You should get it from [http://vagrantup.com](http://vagrantup.com).
+First of all install Vagrant if you haven't or update it if you have a version older than 1.6.0. You should get it from [http://vagrantup.com](http://vagrantup.com).
 
-Then install the `digital_ocean` plugin and patch it to include some
-unpublished changes that I added to it to make user-data work
+Then install the `digital_ocean` plugin and patch it to include some unpublished changes that I added to it to make user-data work(we'll see what that means).
 
 ```bash
 vagrant plugin install vagrant-digitalocean --plugin-version 0.7.0
@@ -44,17 +42,14 @@ cd coreos-vagrant
 
 
 Copy the user-data.sample file to user-data and edit it as you see fit.
-It's where the cluster settings and the initial services that systemd
-will fire up are defined.
+It's where the cluster settings and the initial services that systemd will fire up are defined.
 Keep in mind that `vagrant up` will obtain a new token and set in place every single time, but the rest of settings will be untouched.
 
 ```bash
 cp user-data.sample user-data
 ```
 
-Then set an env variable with your Digital Ocean token for the provider
-to be able to perform operations against the API.If you don't have one
-you can create one in the Apps & API
+Then set an env variable with your Digital Ocean token for the provider to be able to perform operations against the API. If you don't have one you can create one in the Apps & API
 
 ```bash
 export DIGITALOCEAN_API_TOKEN=MYTOKEN
@@ -84,16 +79,14 @@ And you should see something like this for each machine. Write down the ip:
 ## Write the systemd unit files and launch them with Fleet
 
 Once the CoreOS cluster is up we want to run some services in it.
-We'll use fleet to do that, so we first need to install Fleet on our
-machine.
+We'll use fleet to do that, so we first need to install Fleet on our machine.
 Here's how it's done on a Mac:
 
 ```bash
 brew install fleetctl
 ```
 
-You'll also need to define the endpoint for fleet to connect to. You can
-point to any of the machines that are part of the cluster:
+You'll also need to define the endpoint for fleet to connect to. You can point to any of the machines that are part of the cluster:
 
 ```bash
 export FLEETCTL_ENDPOINT=http://178.62.22.220:4001
@@ -102,10 +95,34 @@ export FLEETCTL_ENDPOINT=http://178.62.22.220:4001
 Now if you run `fleetctl list-machines` something like this should be the output:
 
 ```bash
-MACHINE		IP		METADATA
-af84e017...	178.62.22.159	-
-e99e8080...	178.62.22.220	-
-ff425669...	178.62.22.119	-
+MACHINE     IP            METADATA
+af84e017... 178.62.22.159 -
+e99e8080... 178.62.22.220 -
+ff425669... 178.62.22.119 -
 ```
 
-What I did was scaffold a [simple Rails app](https://github.com/enriclluelles/todo-app) and dockerized it
+What I did was scaffold a [simple Rails app](https://github.com/enriclluelles/todo-app) and dockerized it.
+
+This, a MySQL service and discovery service that publishes the database url are defined in the coreos-services folder of the project.
+These are actually systemd unit templates that we first need to load up into fleet and then fire up units based on them. 
+
+Let's load the services onto fleet:
+
+```bash
+cd coreos-services
+fleetctl submit *
+```
+
+And now let's spin up a db unit with its corresponding discovery service
+
+```bash
+fleetctl start db@1.service
+fleetctl start db-discovery@1.service
+```
+
+And then, we start the web instances. We're gonna start as many of them as machines in our cluster(3 in this case). If we try to start one more instance than machines we have, it wont' work
+because the service definition has the `X-Conflicts=todo-http@*.service` directive, which means that only one can run per machine:
+
+```bash
+fleetctl start todo-http@{1..3}.service
+```
